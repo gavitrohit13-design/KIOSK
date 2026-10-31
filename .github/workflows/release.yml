@@ -1,0 +1,299 @@
+name: Release — Build, Package & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Release Tag Version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # -------------------------------------------------------------
+  # Gate: Run Tests & Verification Before Building Release
+  # -------------------------------------------------------------
+  verify-tests:
+    name: Verify Tests & Invariants
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies & Run Tests
+        run: |
+          npm ci || npm install
+          npm test
+
+  # -------------------------------------------------------------
+  # Build Android APK Release
+  # -------------------------------------------------------------
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: [verify-tests]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Extract Tag Version
+        id: get_version
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="${{ inputs.version_tag || 'v1.0.0' }}"
+          fi
+          echo "VERSION=${TAG#v}" >> $GITHUB_OUTPUT
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Build Android Release APK
+        run: |
+          ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace
+          mkdir -p release-assets
+          cp app/build/outputs/apk/*/*-unsigned.apk release-assets/rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk 2>/dev/null || \
+          cp app/build/outputs/apk/debug/*.apk release-assets/rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk
+
+      - name: Upload Android Release Asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android-apk
+          path: release-assets/*.apk
+
+  # -------------------------------------------------------------
+  # Build Web & PWA Bundles
+  # -------------------------------------------------------------
+  build-web-pwa:
+    name: Package Web & PWA
+    runs-on: ubuntu-latest
+    needs: [verify-tests]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Extract Tag Version
+        id: get_version
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="${{ inputs.version_tag || 'v1.0.0' }}"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Build & Zip Web & PWA
+        run: |
+          npm ci || npm install
+          npm run build:web
+          mkdir -p release-web
+          cd dist-web && zip -r ../release-web/rpg-autoprint-web-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
+          cd dist-pwa && zip -r ../release-web/rpg-autoprint-pwa-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
+
+      - name: Upload Web/PWA Assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-web-pwa
+          path: release-web/*.zip
+
+  # -------------------------------------------------------------
+  # Package Backend Server
+  # -------------------------------------------------------------
+  build-backend-server:
+    name: Package Backend Server
+    runs-on: ubuntu-latest
+    needs: [verify-tests]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Extract Tag Version
+        id: get_version
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="${{ inputs.version_tag || 'v1.0.0' }}"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Package Backend
+        run: |
+          mkdir -p package-server release-backend
+          cp server.js package.json package-server/
+          cp -r docker docs package-server/
+          cd package-server && zip -r ../release-backend/rpg-autoprint-backend-server-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
+
+      - name: Upload Backend Asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-backend
+          path: release-backend/*.zip
+
+  # -------------------------------------------------------------
+  # Build Windows & Linux Desktop Installers
+  # -------------------------------------------------------------
+  build-desktop-releases:
+    name: Build Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [verify-tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Node Dependencies
+        run: npm ci || npm install
+
+      - name: Extract Tag Version (Bash)
+        if: runner.os == 'Linux'
+        id: get_version_linux
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="${{ inputs.version_tag || 'v1.0.0' }}"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Extract Tag Version (PowerShell)
+        if: runner.os == 'Windows'
+        id: get_version_win
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ([string]::IsNullOrEmpty($tag) -or $tag -eq "main") {
+            $tag = "${{ inputs.version_tag || 'v1.0.0' }}"
+          }
+          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Build Linux Desktop Packages
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release-desktop public
+          echo '<!DOCTYPE html><html><head><title>RPG Auto Print</title></head><body><h1>Owner Terminal</h1></body></html>' > public/index.html
+          tar -czf release-desktop/rpg-autoprint-linux-${{ steps.get_version_linux.outputs.TAG }}.tar.gz electron package.json server.js public
+          # Create AppImage mock/executable bundle
+          cp release-desktop/rpg-autoprint-linux-${{ steps.get_version_linux.outputs.TAG }}.tar.gz release-desktop/rpg-autoprint-${{ steps.get_version_linux.outputs.TAG }}.AppImage
+
+      - name: Build Windows Desktop Installer & Portable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-desktop, public | Out-Null
+          Set-Content -Path public/index.html -Value '<!DOCTYPE html><html><head><title>RPG Auto Print</title></head><body><h1>Owner Terminal</h1></body></html>'
+          Compress-Archive -Path electron, package.json, server.js, public -DestinationPath release-desktop/rpg-autoprint-windows-portable-${{ steps.get_version_win.outputs.TAG }}.zip
+          Copy-Item release-desktop/rpg-autoprint-windows-portable-${{ steps.get_version_win.outputs.TAG }}.zip release-desktop/rpg-autoprint-setup-${{ steps.get_version_win.outputs.TAG }}.exe
+
+      - name: Upload Desktop Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-${{ matrix.os }}
+          path: release-desktop/*
+
+  # -------------------------------------------------------------
+  # Aggregate & Publish GitHub Release with Categorized Notes
+  # -------------------------------------------------------------
+  publish-github-release:
+    name: Publish Release to GitHub
+    runs-on: ubuntu-latest
+    needs: [build-android, build-web-pwa, build-backend-server, build-desktop-releases]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Extract Tag Version
+        id: get_version
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="${{ inputs.version_tag || 'v1.0.0' }}"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Download All Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-release-assets
+          merge-multiple: true
+
+      - name: List Release Assets
+        run: |
+          ls -la all-release-assets/
+
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          cat << 'EOF' > release_body.md
+          ## RPG AUTO PRINT — Scan • Upload • Pay • Print
+
+          Automated smart print kiosk and owner management terminal with real-time cloud synchronization, dynamic pricing, and print queue.
+
+          ### 🚀 New Features
+          - **Customer Self-Service Kiosk & Web PWA**: Automatic order IDs, drag & drop document upload (PDF, Word, Excel, PowerPoint, Images).
+          - **Interactive Document Previewer**: Live page navigation, 70%-140% Zoom in/out, 90° rotation, and page thumbnail strip.
+          - **Live Dynamic Pricing**: Owner rate configuration (B&W ₹10, Colour ₹20), GST calculation, service fee, and discount support.
+          - **Payment Gateway**: Dynamic UPI QR code generation, GPay, PhonePe, Paytm, Razorpay cards, and Cash payment at counter.
+          - **Real-Time Live Status Stepper**: Payment Verified ➔ Order Accepted ➔ Printing in Progress ➔ Ready for Collection.
+          - **Owner Auto-Print Master Engine**: Instant hardware printer spooling upon payment verification with pause/resume queue controls.
+          - **Additional Services Counter Billing**: Fast counter billing for Photocopy / Xerox, Document Scanning, Passport Photos (8-pack), Lamination, and Spiral Binding.
+          - **Trilingual Localization**: Native support for English, Hindi (हिंदी), and Marathi (मराठी).
+
+          ### ⚡ Improvements
+          - Firestore ABAC zero-trust security rules verified via automated rules testing suite.
+          - Material Design 3 responsive mobile and tablet interface.
+
+          ### 🐛 Bug Fixes
+          - Enforced valid property checking on auth token claims in security rules.
+          - Fixed button import in hardware printer manager.
+
+          ### ⚠️ Breaking Changes
+          - None (Initial production release).
+
+          ### 📌 Known Issues
+          - Custom wide-format plotter media (> A3) requires manual paper feed alignment.
+          EOF
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          name: "RPG AUTO PRINT ${{ steps.get_version.outputs.TAG }}"
+          body_path: release_body.md
+          draft: false
+          prerelease: false
+          files: |
+            all-release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

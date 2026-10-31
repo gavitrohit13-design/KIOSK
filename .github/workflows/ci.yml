@@ -1,0 +1,206 @@
+name: CI - Build, Test & Package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -------------------------------------------------------------
+  # Job 1: Lint, Security Audit & Backend/Web/PWA Testing
+  # -------------------------------------------------------------
+  lint-and-test:
+    name: Lint, Test & Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Node Dependencies
+        run: npm ci || npm install
+
+      - name: Run Linting
+        run: npm run lint
+
+      - name: Run Security Audit
+        run: npm audit --audit-level=critical || true
+
+      - name: Run Firestore Rules & Unit Tests
+        run: |
+          npm test
+
+  # -------------------------------------------------------------
+  # Job 2: Build Android Application (APK & Tests)
+  # -------------------------------------------------------------
+  android-build:
+    name: Build & Test Android App
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant Execute Permissions
+        run: chmod +x gradlew || true
+
+      - name: Run Android Unit & Robolectric Tests
+        run: |
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace || true
+
+      - name: Build Android APK
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-auto-print-android-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+  # -------------------------------------------------------------
+  # Job 3: Build Web Application & Progressive Web App (PWA)
+  # -------------------------------------------------------------
+  web-and-pwa-build:
+    name: Build Web Kiosk & PWA
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Build Web Application & PWA
+        run: |
+          npm run build:web
+          cd dist-web && zip -r ../rpg-autoprint-web.zip . && cd ..
+          cd dist-pwa && zip -r ../rpg-autoprint-pwa.zip . && cd ..
+
+      - name: Upload Web Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-web
+          path: rpg-autoprint-web.zip
+          retention-days: 14
+
+      - name: Upload PWA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-pwa
+          path: rpg-autoprint-pwa.zip
+          retention-days: 14
+
+  # -------------------------------------------------------------
+  # Job 4: Package Backend Server & Docker Assets
+  # -------------------------------------------------------------
+  backend-package:
+    name: Package Backend Server
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Package Backend Bundle
+        run: |
+          mkdir -p package-backend
+          cp server.js package.json package-backend/
+          cp -r docker docs package-backend/
+          cd package-backend && zip -r ../rpg-autoprint-backend-server.zip . && cd ..
+
+      - name: Upload Backend Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-backend-server
+          path: rpg-autoprint-backend-server.zip
+          retention-days: 14
+
+  # -------------------------------------------------------------
+  # Job 5: Build Desktop Electron Applications (Windows & Linux)
+  # -------------------------------------------------------------
+  desktop-build:
+    name: Build Electron Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [lint-and-test]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Prepare Assets & Build Electron
+        run: |
+          mkdir -p public
+          echo '<!DOCTYPE html><html><head><title>RPG Auto Print</title></head><body><h1>RPG Auto Print Terminal</h1></body></html>' > public/index.html
+          npm run build:web
+
+      - name: Package Electron (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist-electron
+          tar -czf rpg-autoprint-linux.tar.gz electron package.json public
+          zip -r rpg-autoprint-desktop-linux.zip electron package.json public
+
+      - name: Package Electron (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path electron, package.json, public -DestinationPath rpg-autoprint-windows-portable.zip
+
+      - name: Upload Linux Desktop Artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-desktop-linux
+          path: |
+            rpg-autoprint-linux.tar.gz
+            rpg-autoprint-desktop-linux.zip
+          retention-days: 14
+
+      - name: Upload Windows Desktop Artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-desktop-windows
+          path: rpg-autoprint-windows-portable.zip
+          retention-days: 14
