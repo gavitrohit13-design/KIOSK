@@ -77,6 +77,7 @@ fun OwnerDashboardScreen(
     onOpenPrinters: () -> Unit,
     onOpenReports: () -> Unit,
     onOpenShopQr: () -> Unit,
+    onOpenServices: () -> Unit,
     onViewInvoice: (Order) -> Unit,
     onTriggerPrint: (Order) -> Unit
 ) {
@@ -107,12 +108,13 @@ fun OwnerDashboardScreen(
         // Quick Action Bar
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             DashboardActionButton("Pricing", Icons.Default.Settings, onOpenSettings, Modifier.weight(1f))
             DashboardActionButton("Printers", Icons.Default.Print, onOpenPrinters, Modifier.weight(1f))
             DashboardActionButton("Reports", Icons.Default.Assessment, onOpenReports, Modifier.weight(1f))
             DashboardActionButton("Shop QR", Icons.Default.QrCode, onOpenShopQr, Modifier.weight(1f))
+            DashboardActionButton("Services", Icons.Default.Receipt, onOpenServices, Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(14.dp))

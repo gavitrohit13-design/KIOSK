@@ -335,6 +335,18 @@ fun CustomerPortalScreen(
                         fileSize = 890000L
                     }
                 }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Interactive Document Previewer
+                com.example.ui.components.DocumentPreviewer(
+                    fileName = fileName,
+                    fileType = fileType,
+                    pageCount = pageCount,
+                    colorMode = colorMode,
+                    duplexMode = duplexMode,
+                    orientation = orientation
+                )
             }
         }
 

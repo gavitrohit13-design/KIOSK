@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: rpg_autoprint_db
+    restart: always
+    environment:
+      POSTGRES_DB: rpg_autoprint
+      POSTGRES_USER: rpg_admin
+      POSTGRES_PASSWORD: secure_rpg_password_2026
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../docs/DATABASE_SCHEMA.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpg_admin -d rpg_autoprint"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Node.js Backend Server & Web Kiosk App
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: rpg_autoprint_app
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://rpg_admin:secure_rpg_password_2026@postgres:5432/rpg_autoprint
+      JWT_SECRET: rpg_jwt_super_secret_key_production
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_placeholder}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-rzp_secret_placeholder}
+      SHOP_NAME: "RPG AUTO PRINT"
+      AUTO_PRINT_ENABLED: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads_data:/app/uploads
+
+  # 3. Nginx / Caddy Reverse Proxy & SSL (HTTPS)
+  reverse_proxy:
+    image: caddy:2-alpine
+    container_name: rpg_autoprint_proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    command: caddy reverse-proxy --from :80 --to app:3000
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  uploads_data:

@@ -143,6 +143,7 @@ fun AppMainContent(
     var showPrinterManager by remember { mutableStateOf(false) }
     var showReports by remember { mutableStateOf(false) }
     var showShopQr by remember { mutableStateOf(false) }
+    var showServicesDialog by remember { mutableStateOf(false) }
 
     val pendingQueueCount = remember(orders) {
         orders.count { it.orderStatus == "PENDING" || it.orderStatus == "ACCEPTED" || it.orderStatus == "PRINTING" }
@@ -290,6 +291,7 @@ fun AppMainContent(
                     onOpenPrinters = { showPrinterManager = true },
                     onOpenReports = { showReports = true },
                     onOpenShopQr = { showShopQr = true },
+                    onOpenServices = { showServicesDialog = true },
                     onViewInvoice = { order -> viewModel.showInvoice(order) },
                     onTriggerPrint = { order -> viewModel.triggerPrint(context, order) }
                 )
@@ -340,6 +342,13 @@ fun AppMainContent(
         ShopQrCodeDialog(
             shop = shop,
             onDismiss = { showShopQr = false }
+        )
+    }
+
+    if (showServicesDialog) {
+        com.example.ui.owner.AdditionalServicesDialog(
+            onDismiss = { showServicesDialog = false },
+            onCreateServiceOrder = { order -> viewModel.placeAndPayOrder(order) }
         )
     }
 }
