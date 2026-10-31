@@ -1,0 +1,37 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Top paper input -->
+    <path
+        android:fillColor="#93C5FD"
+        android:pathData="M38,24h32c2.2,0 4,1.8 4,4v14H34V28c0,-2.2 1.8,-4 4,-4z" />
+    <!-- Paper lines top -->
+    <path
+        android:fillColor="#3B82F6"
+        android:pathData="M42,30h24v2H42zM42,35h18v2H42z" />
+    <!-- Main printer body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,42h48c4.4,0 8,3.6 8,8v18c0,4.4 -3.6,8 -8,8H30c-4.4,0 -8,-3.6 -8,-8V50c0,-4.4 3.6,-8 8,-8z" />
+    <!-- Printer LED status & button -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M78,48a3,3 0 1,0 6,0a3,3 0 1,0 -6,0" />
+    <path
+        android:fillColor="#3B82F6"
+        android:pathData="M70,47h4v2h-4z" />
+    <!-- Output paper slot -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M32,60h44v4H32z" />
+    <!-- Printed document coming out -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M36,62h36c1.1,0 2,0.9 2,2v18c0,1.1 -0.9,2 -2,2H36c-1.1,0 -2,-0.9 -2,-2V64c0,-1.1 0.9,-2 2,-2z" />
+    <!-- Printed lines cyan & blue -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M40,68h28v2.5H40zM40,73h22v2.5H40zM40,78h26v2.5H40z" />
+</vector>

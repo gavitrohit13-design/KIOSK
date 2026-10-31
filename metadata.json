@@ -1,0 +1,6 @@
+{
+  "name": "RPG Auto Print",
+  "description": "Smart Auto Print kiosk & owner management terminal with real-time cloud orders, QR upload, automated print queue, dynamic pricing, and invoices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

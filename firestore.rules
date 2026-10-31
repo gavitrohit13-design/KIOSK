@@ -1,0 +1,199 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        ('email' in request.auth.token && request.auth.token.email == 'gvtrohit5@gmail.com' && ('email_verified' in request.auth.token && request.auth.token.email_verified == true)) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isShopOwnerOrAdmin() {
+      return isAdmin() || (
+        isSignedIn() && exists(/databases/$(database)/documents/shops/main_shop) &&
+        get(/databases/$(database)/documents/shops/main_shop).data.ownerId == request.auth.uid
+      );
+    }
+
+    function isValidShop(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.shopName is string && data.shopName.size() >= 1 && data.shopName.size() <= 100 &&
+             (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 150)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 250)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 25)) &&
+             (!('whatsapp' in data) || (data.whatsapp is string && data.whatsapp.size() <= 25)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 100)) &&
+             (!('gstNumber' in data) || (data.gstNumber is string && data.gstNumber.size() <= 30)) &&
+             (!('upiId' in data) || (data.upiId is string && data.upiId.size() <= 60)) &&
+             (!('bankDetails' in data) || (data.bankDetails is string && data.bankDetails.size() <= 200)) &&
+             (!('businessHours' in data) || (data.businessHours is string && data.businessHours.size() <= 100)) &&
+             data.bwPricePerPage is number && data.bwPricePerPage >= 0 &&
+             data.colorPricePerPage is number && data.colorPricePerPage >= 0 &&
+             (!('gstPercentage' in data) || (data.gstPercentage is number && data.gstPercentage >= 0)) &&
+             (!('discountPercentage' in data) || (data.discountPercentage is number && data.discountPercentage >= 0)) &&
+             (!('serviceCharge' in data) || (data.serviceCharge is number && data.serviceCharge >= 0)) &&
+             (!('minOrderAmount' in data) || (data.minOrderAmount is number && data.minOrderAmount >= 0)) &&
+             (!('autoPrintEnabled' in data) || data.autoPrintEnabled is bool) &&
+             (!('selectedPrinterId' in data) || (data.selectedPrinterId is string && data.selectedPrinterId.size() <= 128)) &&
+             (!('language' in data) || data.language in ['en', 'hi', 'mr']);
+    }
+
+    function isValidOrder(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 100)) &&
+             (!('customerPhone' in data) || (data.customerPhone is string && data.customerPhone.size() <= 25)) &&
+             data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 200 &&
+             (!('fileType' in data) || (data.fileType is string && data.fileType.size() <= 30)) &&
+             (!('fileSize' in data) || (data.fileSize is number && data.fileSize >= 0)) &&
+             data.pageCount is number && data.pageCount >= 1 &&
+             data.copies is number && data.copies >= 1 &&
+             data.colorMode in ['BW', 'COLOR'] &&
+             data.duplexMode in ['SINGLE', 'DOUBLE'] &&
+             data.paperSize in ['A4', 'A3', 'LEGAL'] &&
+             (!('pageRange' in data) || (data.pageRange is string && data.pageRange.size() <= 50)) &&
+             (!('orientation' in data) || data.orientation in ['PORTRAIT', 'LANDSCAPE']) &&
+             (!('scaleMode' in data) || data.scaleMode in ['FIT_TO_PAGE', 'ACTUAL_SIZE']) &&
+             (!('printQuality' in data) || data.printQuality in ['NORMAL', 'HIGH', 'DRAFT']) &&
+             (!('subtotal' in data) || (data.subtotal is number && data.subtotal >= 0)) &&
+             (!('gstAmount' in data) || (data.gstAmount is number && data.gstAmount >= 0)) &&
+             (!('serviceCharge' in data) || (data.serviceCharge is number && data.serviceCharge >= 0)) &&
+             (!('discountAmount' in data) || (data.discountAmount is number && data.discountAmount >= 0)) &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             (!('paymentMethod' in data) || data.paymentMethod in ['UPI', 'QR', 'GPAY', 'PHONEPE', 'PAYTM', 'RAZORPAY', 'CASH']) &&
+             data.paymentStatus in ['PENDING', 'PAID', 'FAILED'] &&
+             (!('paymentTxnId' in data) || (data.paymentTxnId is string && data.paymentTxnId.size() <= 100)) &&
+             data.orderStatus in ['PENDING', 'ACCEPTED', 'PRINTING', 'COMPLETED', 'CANCELLED'] &&
+             (!('printerAssigned' in data) || (data.printerAssigned is string && data.printerAssigned.size() <= 100)) &&
+             (!('isAutoPrinted' in data) || data.isAutoPrinted is bool);
+    }
+
+    function isValidPrinter(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.type in ['LASER', 'INKJET', 'THERMAL', 'PLOTTER'] &&
+             data.connectionType in ['USB', 'NETWORK', 'WIFI'] &&
+             (!('ipAddress' in data) || (data.ipAddress is string && data.ipAddress.size() <= 60)) &&
+             (!('colorSupported' in data) || data.colorSupported is bool) &&
+             (!('duplexSupported' in data) || data.duplexSupported is bool) &&
+             data.status in ['ONLINE', 'OFFLINE', 'PRINTING', 'OUT_OF_PAPER', 'PAUSED'] &&
+             (!('paperLevelPercent' in data) || (data.paperLevelPercent is number && data.paperLevelPercent >= 0 && data.paperLevelPercent <= 100)) &&
+             (!('inkLevelPercent' in data) || (data.inkLevelPercent is number && data.inkLevelPercent >= 0 && data.inkLevelPercent <= 100)) &&
+             (!('queueCount' in data) || (data.queueCount is number && data.queueCount >= 0));
+    }
+
+    // Shops collection
+    match /shops/{shopId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(shopId) &&
+                       request.auth.uid == incoming().ownerId &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidShop(incoming());
+      allow update: if isSignedIn() &&
+                       (request.auth.uid == existing().ownerId || isAdmin()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidShop(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'shopName', 'tagline', 'address', 'phone', 'whatsapp', 'email',
+                         'gstNumber', 'upiId', 'bankDetails', 'businessHours', 'bwPricePerPage',
+                         'colorPricePerPage', 'gstPercentage', 'discountPercentage',
+                         'serviceCharge', 'minOrderAmount', 'autoPrintEnabled',
+                         'selectedPrinterId', 'language', 'updatedAt'
+                       ]);
+      allow delete: if isSignedIn() && (request.auth.uid == existing().ownerId || isAdmin());
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isShopOwnerOrAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isShopOwnerOrAdmin());
+
+      allow create: if isSignedIn() && isValidId(orderId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidOrder(incoming());
+
+      allow update: if isSignedIn() && (
+        // Customer can update payment info
+        (
+          resource.data.userId == request.auth.uid &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt is timestamp &&
+          incoming().updatedAt <= request.time &&
+          isValidOrder(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'paymentTxnId', 'paymentMethod', 'updatedAt'])
+        ) ||
+        // Owner/Admin can update status, printer assignment, and payment info
+        (
+          isShopOwnerOrAdmin() &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt is timestamp &&
+          incoming().updatedAt <= request.time &&
+          isValidOrder(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'orderStatus', 'printerAssigned', 'isAutoPrinted', 'paymentStatus', 'paymentTxnId', 'updatedAt'
+          ])
+        )
+      );
+
+      allow delete: if isSignedIn() && isShopOwnerOrAdmin();
+    }
+
+    // Printers collection
+    match /printers/{printerId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(printerId) &&
+                       (request.auth.uid == incoming().ownerId || isAdmin()) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidPrinter(incoming());
+      allow update: if isSignedIn() &&
+                       (request.auth.uid == existing().ownerId || isAdmin()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidPrinter(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'type', 'connectionType', 'ipAddress', 'colorSupported',
+                         'duplexSupported', 'status', 'paperLevelPercent', 'inkLevelPercent',
+                         'queueCount', 'updatedAt'
+                       ]);
+      allow delete: if isSignedIn() && (request.auth.uid == existing().ownerId || isAdmin());
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

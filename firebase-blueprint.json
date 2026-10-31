@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "Shop": {
+      "title": "Shop",
+      "description": "Represents the shop profile, billing details, and owner printing configurations",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "The UID of the shop owner" },
+        "shopName": { "type": "string", "description": "Display name of the print shop" },
+        "tagline": { "type": "string", "description": "Shop slogan or tagline" },
+        "address": { "type": "string", "description": "Physical shop address" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "whatsapp": { "type": "string", "description": "WhatsApp notification number" },
+        "email": { "type": "string", "description": "Contact email address" },
+        "gstNumber": { "type": "string", "description": "GSTIN registration number" },
+        "upiId": { "type": "string", "description": "UPI ID for customer QR payments" },
+        "bankDetails": { "type": "string", "description": "Bank account & IFSC information" },
+        "businessHours": { "type": "string", "description": "Operating hours of the shop" },
+        "bwPricePerPage": { "type": "number", "description": "Default B/W price per page in INR" },
+        "colorPricePerPage": { "type": "number", "description": "Default colour price per page in INR" },
+        "gstPercentage": { "type": "number", "description": "Applicable GST tax percentage" },
+        "discountPercentage": { "type": "number", "description": "Promotional discount percentage" },
+        "serviceCharge": { "type": "number", "description": "Handling or service charge in INR" },
+        "minOrderAmount": { "type": "number", "description": "Minimum bill amount required to print" },
+        "autoPrintEnabled": { "type": "boolean", "description": "Flag to automatically dispatch jobs to printer upon paid status" },
+        "selectedPrinterId": { "type": "string", "description": "Current default assigned printer ID" },
+        "language": { "type": "string", "enum": ["en", "hi", "mr"], "description": "Default system language" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp via serverTimestamp()" }
+      },
+      "required": ["ownerId", "shopName", "bwPricePerPage", "colorPricePerPage", "createdAt", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer print order with file specifications, cost breakdown, and live queue status",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Customer UID or owner UID for walk-in" },
+        "customerName": { "type": "string", "description": "Customer full name or alias" },
+        "customerPhone": { "type": "string", "description": "Customer contact number" },
+        "fileName": { "type": "string", "description": "Uploaded document filename" },
+        "fileType": { "type": "string", "description": "File extension or mime type (PDF, DOCX, JPG, etc)" },
+        "fileSize": { "type": "number", "description": "File size in bytes" },
+        "pageCount": { "type": "number", "description": "Total pages in the document" },
+        "copies": { "type": "number", "description": "Number of print copies requested" },
+        "colorMode": { "type": "string", "enum": ["BW", "COLOR"], "description": "Print colour option" },
+        "duplexMode": { "type": "string", "enum": ["SINGLE", "DOUBLE"], "description": "Duplex mode (single side or double side)" },
+        "paperSize": { "type": "string", "enum": ["A4", "A3", "LEGAL"], "description": "Paper dimensions" },
+        "pageRange": { "type": "string", "description": "Specific page numbers (e.g. ALL, 1-5)" },
+        "orientation": { "type": "string", "enum": ["PORTRAIT", "LANDSCAPE"], "description": "Page orientation" },
+        "scaleMode": { "type": "string", "enum": ["FIT_TO_PAGE", "ACTUAL_SIZE"], "description": "Page scaling" },
+        "printQuality": { "type": "string", "enum": ["NORMAL", "HIGH", "DRAFT"], "description": "Print output resolution" },
+        "subtotal": { "type": "number", "description": "Base price for page count and copies" },
+        "gstAmount": { "type": "number", "description": "Calculated GST component" },
+        "serviceCharge": { "type": "number", "description": "Service charge applied" },
+        "discountAmount": { "type": "number", "description": "Discount applied" },
+        "totalAmount": { "type": "number", "description": "Final payable amount in INR" },
+        "paymentMethod": { "type": "string", "enum": ["UPI", "QR", "GPAY", "PHONEPE", "PAYTM", "RAZORPAY", "CASH"], "description": "Chosen payment mode" },
+        "paymentStatus": { "type": "string", "enum": ["PENDING", "PAID", "FAILED"], "description": "Payment verification state" },
+        "paymentTxnId": { "type": "string", "description": "Gateway or UPI transaction reference" },
+        "orderStatus": { "type": "string", "enum": ["PENDING", "ACCEPTED", "PRINTING", "COMPLETED", "CANCELLED"], "description": "Current print queue progress" },
+        "printerAssigned": { "type": "string", "description": "Name or ID of assigned hardware printer" },
+        "isAutoPrinted": { "type": "boolean", "description": "Whether job was auto-dispatched to physical printer" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp via serverTimestamp()" }
+      },
+      "required": ["userId", "fileName", "pageCount", "copies", "colorMode", "duplexMode", "paperSize", "totalAmount", "paymentStatus", "orderStatus", "createdAt", "updatedAt"]
+    },
+    "Printer": {
+      "title": "Printer",
+      "description": "Hardware printer device profile, status, and tray telemetry",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Owner UID who configured the printer" },
+        "name": { "type": "string", "description": "Printer model or label" },
+        "type": { "type": "string", "enum": ["LASER", "INKJET", "THERMAL", "PLOTTER"], "description": "Printing technology" },
+        "connectionType": { "type": "string", "enum": ["USB", "NETWORK", "WIFI"], "description": "Interface connection type" },
+        "ipAddress": { "type": "string", "description": "Network IP or connection string" },
+        "colorSupported": { "type": "boolean", "description": "True if printer can print full colour" },
+        "duplexSupported": { "type": "boolean", "description": "True if printer supports automatic duplex" },
+        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE", "PRINTING", "OUT_OF_PAPER", "PAUSED"], "description": "Current device status" },
+        "paperLevelPercent": { "type": "number", "description": "Paper tray fill percentage" },
+        "inkLevelPercent": { "type": "number", "description": "Toner/ink reservoir percentage" },
+        "queueCount": { "type": "number", "description": "Number of jobs waiting in spooler" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["ownerId", "name", "type", "connectionType", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/shops/{shopId}": {
+      "schema": "Shop",
+      "description": "Shop profile and pricing settings"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer print orders and tracking queue"
+    },
+    "/printers/{printerId}": {
+      "schema": "Printer",
+      "description": "Registered hardware printers and queue load"
+    }
+  }
+}
