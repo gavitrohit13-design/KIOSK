@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPG AUTO PRINT — Scan • Upload • Pay • Print</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1E3A8A">
+</head>
+<body>
+
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo-badge">🖨️</div>
+      <div class="brand-text">
+        <h1 id="txtAppTitle">RPG AUTO PRINT</h1>
+        <p id="txtAppTagline">Scan • Upload • Pay • Print</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <select id="langSelect" class="lang-select" onchange="changeLanguage(this.value)">
+        <option value="en">English</option>
+        <option value="hi">हिंदी</option>
+        <option value="mr">मराठी</option>
+      </select>
+      <button class="btn-owner-mode" onclick="openOwnerPanel()">🔒 Owner PC</button>
+    </div>
+  </header>
+
+  <!-- Main Kiosk Container -->
+  <main class="container">
+
+    <!-- Rate & Status Banner -->
+    <div class="rate-banner">
+      <div>
+        <h3 id="shopNameBanner">RPG AUTO PRINT KIOSK</h3>
+        <p style="font-size: 11px; opacity: 0.9;">Self-Service Cloud Print Terminal</p>
+      </div>
+      <div class="rate-chips">
+        <div class="rate-chip">
+          <span class="label">B&W Rate</span>
+          <span class="value" id="badgeBwRate">₹10/pg</span>
+        </div>
+        <div class="rate-chip">
+          <span class="label">Colour Rate</span>
+          <span class="value" id="badgeColorRate">₹20/pg</span>
+        </div>
+        <div class="rate-chip">
+          <span class="label">GST Rate</span>
+          <span class="value" id="badgeGstRate">18%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Order Tracker View (Shown when order is placed) -->
+    <div id="orderTrackerSection" class="card" style="display: none;">
+      <h2><span id="trackerTitle">Live Order Status</span> — <span id="trackerOrderId" style="color: var(--primary);">ORD-000000</span></h2>
+      <div class="stepper">
+        <div class="step-item done" id="step1">
+          <div class="step-icon">✓</div>
+          <div>
+            <strong id="txtStep1Title">Payment Verified</strong>
+            <p style="font-size: 11px; color: var(--text-muted);" id="stepTxnDetails">Verified via UPI</p>
+          </div>
+        </div>
+        <div class="step-item active" id="step2">
+          <div class="step-icon">2</div>
+          <div>
+            <strong id="txtStep2Title">Order Accepted</strong>
+            <p style="font-size: 11px; color: var(--text-muted);" id="stepPrinterName">Assigned to HP LaserJet Pro M404dn</p>
+          </div>
+        </div>
+        <div class="step-item" id="step3">
+          <div class="step-icon">3</div>
+          <div>
+            <strong id="txtStep3Title">Printing in Progress</strong>
+            <p style="font-size: 11px; color: var(--text-muted);">Spooling document to printer...</p>
+          </div>
+        </div>
+        <div class="step-item" id="step4">
+          <div class="step-icon">4</div>
+          <div>
+            <strong id="txtStep4Title">Ready for Collection</strong>
+            <p style="font-size: 11px; color: var(--text-muted);">Pick up your printed pages from shop counter</p>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; margin-top: 16px;">
+        <button class="btn-primary" style="flex: 1; background: #059669;" onclick="openInvoiceModal()">🧾 View & Print Invoice</button>
+        <button class="btn-owner-mode" style="flex: 1; color: var(--primary); border-color: var(--primary);" onclick="resetForNewOrder()">+ Print Another</button>
+      </div>
+    </div>
+
+    <!-- Step 1: Upload Document Card -->
+    <section class="card" id="uploadCard">
+      <h2>1. <span id="txtStepUpload">Upload Document</span></h2>
+      
+      <div class="dropzone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="dropzone-icon">📁</div>
+        <p><strong>Click to choose file</strong> or drag & drop here</p>
+        <p>Supports PDF, DOC, DOCX, JPG, PNG, XLS, PPT</p>
+        <input type="file" id="fileInput" style="display: none;" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx,.ppt,.pptx" onchange="handleFileSelected(this)">
+      </div>
+
+      <div class="file-info-badge" id="fileBadge">
+        <div>
+          <div class="file-name" id="displayFileName">University_Project_Report.pdf</div>
+          <div class="file-meta" id="displayFileMeta">PDF • 14 Pages detected • 2.4 MB</div>
+        </div>
+        <button class="btn-owner-mode" style="color: var(--primary); border-color: var(--primary); padding: 4px 8px;" onclick="document.getElementById('fileInput').click()">Change</button>
+      </div>
+
+      <!-- Interactive Document Previewer -->
+      <div class="doc-preview-container">
+        <div class="preview-toolbar">
+          <span style="font-size: 11px; font-weight: 700; color: var(--primary);" id="previewPageIndicator">Page 1 of 14</span>
+          <div style="display: flex; gap: 6px;">
+            <button onclick="adjustZoom(-0.15)">- Zoom</button>
+            <span id="zoomDisplay" style="font-size: 11px; font-weight: bold; line-height: 24px;">100%</span>
+            <button onclick="adjustZoom(0.15)">+ Zoom</button>
+            <button onclick="rotatePreview()">⟳ Rotate 90°</button>
+          </div>
+        </div>
+
+        <!-- Canvas Sheet Representation -->
+        <div class="doc-canvas-sheet" id="previewSheet">
+          <div class="sheet-line sheet-title" style="width: 70%; height: 8px;"></div>
+          <div class="sheet-line sheet-accent" style="width: 45%; height: 5px;"></div>
+          <div class="sheet-line" style="width: 90%;"></div>
+          <div class="sheet-line" style="width: 85%;"></div>
+          <div class="sheet-line" style="width: 95%;"></div>
+          <div class="sheet-line" style="width: 60%;"></div>
+          <div class="sheet-line" style="width: 90%;"></div>
+          <div class="sheet-line" style="width: 80%;"></div>
+          <div class="sheet-line" style="width: 90%;"></div>
+          <div class="sheet-line" style="width: 50%;"></div>
+          <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #94A3B8;" id="sheetPageStamp">1</div>
+        </div>
+
+        <div class="preview-page-nav">
+          <button onclick="stepPreviewPage(-1)">‹</button>
+          <span style="font-size: 11px; color: var(--text-muted);">Previewing Document Sheet</span>
+          <button onclick="stepPreviewPage(1)">›</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Print Configurations Card -->
+    <section class="card" id="configCard">
+      <h2>2. <span id="txtStepConfig">Print Configurations</span></h2>
+
+      <p style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Colour Mode</p>
+      <div class="options-grid">
+        <div class="option-btn active" id="btnBw" onclick="setColorMode('BW')">Black & White (<span id="txtBwPriceLabel">₹10/pg</span>)</div>
+        <div class="option-btn" id="btnColor" onclick="setColorMode('COLOR')">Full Colour (<span id="txtColorPriceLabel">₹20/pg</span>)</div>
+      </div>
+
+      <p style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Sides</p>
+      <div class="options-grid">
+        <div class="option-btn active" id="btnSingleSide" onclick="setDuplex('SINGLE')">Single Side</div>
+        <div class="option-btn" id="btnDoubleSide" onclick="setDuplex('DOUBLE')">Double Side (Duplex)</div>
+      </div>
+
+      <p style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Paper Size</p>
+      <div class="options-grid">
+        <div class="option-btn active" id="btnA4" onclick="setPaperSize('A4')">A4 Standard</div>
+        <div class="option-btn" id="btnA3" onclick="setPaperSize('A3')">A3 Large</div>
+        <div class="option-btn" id="btnLegal" onclick="setPaperSize('LEGAL')">Legal Stamp</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px;">
+        <div>
+          <p style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Copies</p>
+          <div class="counter-row">
+            <button class="counter-btn" onclick="adjustCopies(-1)">-</button>
+            <span class="counter-display" id="copiesDisplay">1</span>
+            <button class="counter-btn" onclick="adjustCopies(1)">+</button>
+          </div>
+        </div>
+
+        <div>
+          <p style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Page Range</p>
+          <input type="text" id="pageRangeInput" value="ALL" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;" placeholder="e.g. ALL or 1-5" onchange="calculatePrice()">
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3: Transparent Pricing & Checkout -->
+    <section class="card" id="priceCard">
+      <h2>3. <span id="txtStepPrice">Live Cost Breakdown</span></h2>
+      <div class="price-breakdown">
+        <div class="price-row">
+          <span id="txtCalcPages">14 pages × 1 copy</span>
+          <span id="txtSubtotal">₹140.00</span>
+        </div>
+        <div class="price-row">
+          <span>GST (<span id="txtGstPercent">18</span>%)</span>
+          <span id="txtGst">₹25.20</span>
+        </div>
+        <div class="price-row">
+          <span>Service & Cloud Fee</span>
+          <span id="txtServiceFee">₹2.00</span>
+        </div>
+        <div class="price-row total">
+          <span>TOTAL PAYABLE</span>
+          <span id="txtGrandTotal">₹167.20</span>
+        </div>
+      </div>
+
+      <button class="btn-primary" onclick="openPaymentModal()">
+        <span id="btnPayText">Proceed to Pay • ₹167.20</span>
+      </button>
+    </section>
+
+  </main>
+
+  <!-- Payment Modal -->
+  <div class="modal-overlay" id="paymentModal">
+    <div class="modal-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="font-size: 16px; font-weight: 800; color: var(--primary);">SECURE UPI PAYMENT</h3>
+        <button onclick="closeModal('paymentModal')" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+      </div>
+
+      <p style="font-size: 12px; color: var(--text-muted);">Scan this dynamic QR code with any UPI app to pay and start auto-printing.</p>
+
+      <div class="qr-container">
+        <canvas id="qrCanvas" width="200" height="200"></canvas>
+        <p style="font-size: 11px; font-weight: 700; color: var(--primary); margin-top: 8px;" id="qrUpiStringDisplay">UPI ID: rpgautoprint@upi</p>
+        <p style="font-size: 16px; font-weight: 900; color: var(--text-main); margin-top: 4px;" id="qrPayAmount">Amount: ₹167.20</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px;">
+        <button class="option-btn active" style="padding: 6px;">GPay</button>
+        <button class="option-btn active" style="padding: 6px;">PhonePe</button>
+        <button class="option-btn active" style="padding: 6px;">Paytm</button>
+        <button class="option-btn active" style="padding: 6px;">BHIM</button>
+      </div>
+
+      <button class="btn-primary" style="background: #059669;" onclick="confirmPaymentAndPrint()">
+        ✓ I Have Paid • Verify & Print
+      </button>
+
+      <button class="btn-owner-mode" style="width: 100%; margin-top: 8px; color: #64748B;" onclick="closeModal('paymentModal')">Cancel</button>
+    </div>
+  </div>
+
+  <!-- GST Tax Invoice Modal -->
+  <div class="modal-overlay" id="invoiceModal">
+    <div class="modal-content" id="invoicePrintArea">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+        <div>
+          <h2 style="font-size: 16px; font-weight: 900; color: var(--primary);">TAX INVOICE</h2>
+          <h3 id="invShopName">RPG AUTO PRINT</h3>
+          <p style="font-size: 10px; color: var(--text-muted);" id="invShopMeta">Shop No. 4, College Road • GSTIN: 27AAAAA0000A1Z5</p>
+        </div>
+        <button class="no-print" onclick="closeModal('invoiceModal')" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--border); margin: 10px 0;">
+
+      <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 10px;">
+        <div>
+          <p><strong>Invoice No:</strong> <span id="invNumber">INV-2026-001</span></p>
+          <p><strong>Order ID:</strong> <span id="invOrderId">ORD-849201</span></p>
+        </div>
+        <div style="text-align: right;">
+          <p><strong>Date:</strong> <span id="invDate">31 Oct 2026</span></p>
+          <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold;">PAID (UPI)</span></p>
+        </div>
+      </div>
+
+      <table style="width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 12px;">
+        <thead>
+          <tr style="background: #F1F5F9; text-align: left;">
+            <th style="padding: 6px;">Item Description</th>
+            <th style="padding: 6px; text-align: center;">Qty</th>
+            <th style="padding: 6px; text-align: right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 6px;" id="invItemDesc">University_Report.pdf (14 pgs B&W Single Side)</td>
+            <td style="padding: 6px; text-align: center;" id="invQty">1 copy</td>
+            <td style="padding: 6px; text-align: right;" id="invSubtotal">₹140.00</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="border-top: 1px solid var(--border); padding-top: 8px; font-size: 12px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>GST (18%)</span>
+          <span id="invGst">₹25.20</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>Service Fee</span>
+          <span>₹2.00</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 900; color: var(--primary); margin-top: 6px; border-top: 2px solid var(--border); padding-top: 6px;">
+          <span>TOTAL PAID</span>
+          <span id="invGrandTotal">₹167.20</span>
+        </div>
+      </div>
+
+      <div class="no-print" style="display: flex; gap: 8px; margin-top: 16px;">
+        <button class="btn-primary" onclick="window.print()">🖨️ Print Invoice</button>
+        <button class="btn-owner-mode" style="color: var(--primary);" onclick="closeModal('invoiceModal')">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Owner PC Dashboard Modal -->
+  <div class="modal-overlay" id="ownerModal">
+    <div class="modal-content" style="max-width: 750px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h2 style="font-size: 18px; font-weight: 900; color: var(--primary);">OWNER PC — PRINT MANAGER</h2>
+        <button onclick="closeModal('ownerModal')" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+      </div>
+
+      <!-- Auto Print Engine Toggle -->
+      <div style="background: #0F172A; color: white; border-radius: 12px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <strong style="font-size: 14px;">⚡ Auto-Print Master Engine</strong>
+          <p style="font-size: 11px; color: #94A3B8;">Automatically sends paid customer orders to hardware printer</p>
+        </div>
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input type="checkbox" id="autoPrintMasterCheck" checked onchange="toggleAutoPrintMaster(this.checked)" style="transform: scale(1.4);">
+          <span style="font-size: 12px; font-weight: bold; color: #10B981;">ACTIVE</span>
+        </label>
+      </div>
+
+      <!-- Owner Actions Grid -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px;">
+        <button class="option-btn" onclick="alert('Pricing Editor: B&W ₹10, Colour ₹20, GST 18%. Edit in Settings.')">⚙️ Pricing</button>
+        <button class="option-btn" onclick="alert('Connected Hardware Printers: HP LaserJet Pro (ONLINE), Epson EcoTank (ONLINE), TVS Thermal (ONLINE)')">🖨️ Printers</button>
+        <button class="option-btn" onclick="alert('Today Sales: ₹1,840 | Total Sheets: 142 | Completed: 12 jobs')">📊 Reports</button>
+        <button class="option-btn" onclick="alert('Opening Services: Photocopy ₹2, Scanning ₹10, Passport Photos ₹50, Lamination ₹20')">📋 Services</button>
+      </div>
+
+      <!-- Live Order Spooler Queue -->
+      <h3 style="font-size: 14px; font-weight: 800; margin-bottom: 8px;">Live Hardware Print Queue</h3>
+      <div id="ownerQueueList" style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto;">
+        <!-- Populated via JS -->
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
+</body>
+</html>
