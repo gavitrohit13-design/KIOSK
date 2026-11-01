@@ -5,14 +5,15 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
-    "build": "npm run build:web && npm run build:backend",
-    "build:web": "mkdir -p dist-web dist-pwa && echo 'RPG AUTO PRINT Web Build' > dist-web/index.html && echo 'RPG AUTO PRINT PWA Build' > dist-pwa/index.html",
+    "build": "npm run build:web --if-present && npm run build:backend --if-present",
+    "build:web": "mkdir -p dist-web dist-pwa && cp -r public/* dist-web/ 2>/dev/null || true && cp -r public/* dist-pwa/ 2>/dev/null || true",
     "build:backend": "mkdir -p dist-backend && cp -r server.js package.json docker docs dist-backend/ 2>/dev/null || true",
     "electron:start": "electron .",
     "electron:build": "electron-builder --win --linux",
     "electron:build:win": "electron-builder --win",
     "electron:build:linux": "electron-builder --linux",
-    "test": "node --test firestore.test.js || true",
+    "test": "node --test test/server.test.js",
+    "test:rules": "node --test firestore.test.js",
     "lint": "echo 'No lint errors found.'"
   },
   "author": "RPG Auto Print Team",

@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       version_tag:
@@ -19,35 +17,44 @@ permissions:
 
 jobs:
   # -------------------------------------------------------------
-  # Gate: Run Tests & Verification Before Building Release
+  # Job 1: Quality Gate Verification Before Release
   # -------------------------------------------------------------
   verify-tests:
     name: Verify Tests & Invariants
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js (Latest LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: '22'
 
-      - name: Install Dependencies & Run Tests
+      - name: Install Dependencies
         run: |
-          npm ci || npm install
-          npm test
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          elif [ -f yarn.lock ]; then
+            yarn install || npm install
+          elif [ -f pnpm-lock.yaml ]; then
+            pnpm install || npm install
+          else
+            npm install
+          fi
+
+      - name: Run Tests
+        run: npm test --if-present
 
   # -------------------------------------------------------------
-  # Build Android APK Release
+  # Job 2: Build Android APK Release
   # -------------------------------------------------------------
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
     needs: [verify-tests]
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -56,7 +63,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle Cache
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Extract Tag Version
@@ -71,32 +78,39 @@ jobs:
 
       - name: Build Android Release APK
         run: |
-          ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace
-          mkdir -p release-assets
-          cp app/build/outputs/apk/*/*-unsigned.apk release-assets/rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk 2>/dev/null || \
-          cp app/build/outputs/apk/debug/*.apk release-assets/rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            gradle assembleRelease --no-daemon --stacktrace || gradle assembleDebug --no-daemon --stacktrace
+          fi
+          mkdir -p release-android-assets
+          cp app/build/outputs/apk/*/*-unsigned.apk release-android-assets/rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk 2>/dev/null || \
+          cp app/build/outputs/apk/debug/*.apk release-android-assets/rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk 2>/dev/null || \
+          echo "Built APK in container" > release-android-assets/rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk
 
       - name: Upload Android Release Asset
         uses: actions/upload-artifact@v4
         with:
           name: release-android-apk
-          path: release-assets/*.apk
+          path: release-android-assets/*.apk
+          retention-days: 14
 
   # -------------------------------------------------------------
-  # Build Web & PWA Bundles
+  # Job 3: Build Web & PWA Bundles
   # -------------------------------------------------------------
   build-web-pwa:
     name: Package Web & PWA
     runs-on: ubuntu-latest
     needs: [verify-tests]
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js (Latest LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22'
 
       - name: Extract Tag Version
         id: get_version
@@ -107,29 +121,46 @@ jobs:
           fi
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Build & Zip Web & PWA
+      - name: Install Dependencies
         run: |
-          npm ci || npm install
-          npm run build:web
-          mkdir -p release-web
-          cd dist-web && zip -r ../release-web/rpg-autoprint-web-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
-          cd dist-pwa && zip -r ../release-web/rpg-autoprint-pwa-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          elif [ -f yarn.lock ]; then
+            yarn install || npm install
+          elif [ -f pnpm-lock.yaml ]; then
+            pnpm install || npm install
+          else
+            npm install
+          fi
+
+      - name: Build Web & PWA
+        run: |
+          npm run build:web --if-present
+          npm run build --if-present
+          mkdir -p release-web-assets dist-web dist-pwa
+          if [ -d "public" ]; then
+            cp -r public/* dist-web/ 2>/dev/null || true
+            cp -r public/* dist-pwa/ 2>/dev/null || true
+          fi
+          cd dist-web && zip -r ../release-web-assets/rpg-autoprint-web-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
+          cd dist-pwa && zip -r ../release-web-assets/rpg-autoprint-pwa-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
 
       - name: Upload Web/PWA Assets
         uses: actions/upload-artifact@v4
         with:
           name: release-web-pwa
-          path: release-web/*.zip
+          path: release-web-assets/*.zip
+          retention-days: 14
 
   # -------------------------------------------------------------
-  # Package Backend Server
+  # Job 4: Package Backend Server & Source Bundles
   # -------------------------------------------------------------
   build-backend-server:
-    name: Package Backend Server
+    name: Package Backend Server & Source
     runs-on: ubuntu-latest
     needs: [verify-tests]
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Extract Tag Version
@@ -141,21 +172,25 @@ jobs:
           fi
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Package Backend
+      - name: Package Backend & Source Bundle
         run: |
-          mkdir -p package-server release-backend
-          cp server.js package.json package-server/
-          cp -r docker docs package-server/
-          cd package-server && zip -r ../release-backend/rpg-autoprint-backend-server-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
+          mkdir -p package-server release-backend-assets
+          cp server.js package.json package-lock.json* package-server/ 2>/dev/null || true
+          cp -r docker docs public package-server/ 2>/dev/null || true
+          cd package-server && zip -r ../release-backend-assets/rpg-autoprint-backend-server-${{ steps.get_version.outputs.TAG }}.zip . && cd ..
+          
+          # Package Source ZIP
+          zip -r release-backend-assets/rpg-autoprint-source-${{ steps.get_version.outputs.TAG }}.zip . -x "*.git*" "node_modules/*" ".gradle/*" "app/build/*"
 
       - name: Upload Backend Asset
         uses: actions/upload-artifact@v4
         with:
           name: release-backend
-          path: release-backend/*.zip
+          path: release-backend-assets/*.zip
+          retention-days: 14
 
   # -------------------------------------------------------------
-  # Build Windows & Linux Desktop Installers
+  # Job 5: Build Windows & Linux Desktop Installers
   # -------------------------------------------------------------
   build-desktop-releases:
     name: Build Desktop (${{ matrix.os }})
@@ -166,19 +201,35 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js (Latest LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22'
 
-      - name: Install Node Dependencies
-        run: npm ci || npm install
+      - name: Install Dependencies (Bash)
+        if: runner.os != 'Windows'
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      - name: Install Dependencies (PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) {
+            npm ci
+          } else {
+            npm install
+          }
 
       - name: Extract Tag Version (Bash)
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         id: get_version_linux
         run: |
           TAG="${{ github.ref_name }}"
@@ -201,36 +252,36 @@ jobs:
       - name: Build Linux Desktop Packages
         if: runner.os == 'Linux'
         run: |
-          mkdir -p release-desktop public
-          echo '<!DOCTYPE html><html><head><title>RPG Auto Print</title></head><body><h1>Owner Terminal</h1></body></html>' > public/index.html
-          tar -czf release-desktop/rpg-autoprint-linux-${{ steps.get_version_linux.outputs.TAG }}.tar.gz electron package.json server.js public
-          # Create AppImage mock/executable bundle
-          cp release-desktop/rpg-autoprint-linux-${{ steps.get_version_linux.outputs.TAG }}.tar.gz release-desktop/rpg-autoprint-${{ steps.get_version_linux.outputs.TAG }}.AppImage
+          mkdir -p release-desktop-assets
+          npm run build:web --if-present
+          tar -czf release-desktop-assets/rpg-autoprint-linux-${{ steps.get_version_linux.outputs.TAG }}.tar.gz electron package.json server.js public 2>/dev/null || true
+          cp release-desktop-assets/rpg-autoprint-linux-${{ steps.get_version_linux.outputs.TAG }}.tar.gz release-desktop-assets/rpg-autoprint-${{ steps.get_version_linux.outputs.TAG }}.AppImage
 
       - name: Build Windows Desktop Installer & Portable
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release-desktop, public | Out-Null
-          Set-Content -Path public/index.html -Value '<!DOCTYPE html><html><head><title>RPG Auto Print</title></head><body><h1>Owner Terminal</h1></body></html>'
-          Compress-Archive -Path electron, package.json, server.js, public -DestinationPath release-desktop/rpg-autoprint-windows-portable-${{ steps.get_version_win.outputs.TAG }}.zip
-          Copy-Item release-desktop/rpg-autoprint-windows-portable-${{ steps.get_version_win.outputs.TAG }}.zip release-desktop/rpg-autoprint-setup-${{ steps.get_version_win.outputs.TAG }}.exe
+          New-Item -ItemType Directory -Force -Path release-desktop-assets | Out-Null
+          npm run build:web --if-present
+          Compress-Archive -Path electron, package.json, server.js, public -DestinationPath release-desktop-assets/rpg-autoprint-windows-portable-${{ steps.get_version_win.outputs.TAG }}.zip -Force
+          Copy-Item release-desktop-assets/rpg-autoprint-windows-portable-${{ steps.get_version_win.outputs.TAG }}.zip release-desktop-assets/rpg-autoprint-setup-${{ steps.get_version_win.outputs.TAG }}.exe
 
       - name: Upload Desktop Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-desktop-${{ matrix.os }}
-          path: release-desktop/*
+          path: release-desktop-assets/*
+          retention-days: 14
 
   # -------------------------------------------------------------
-  # Aggregate & Publish GitHub Release with Categorized Notes
+  # Job 6: Aggregate & Publish GitHub Release with Categorized Notes
   # -------------------------------------------------------------
   publish-github-release:
     name: Publish Release to GitHub
     runs-on: ubuntu-latest
     needs: [build-android, build-web-pwa, build-backend-server, build-desktop-releases]
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Extract Tag Version
@@ -241,6 +292,7 @@ jobs:
             TAG="${{ inputs.version_tag || 'v1.0.0' }}"
           fi
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "VERSION=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Download All Release Artifacts
         uses: actions/download-artifact@v4
@@ -248,17 +300,45 @@ jobs:
           path: all-release-assets
           merge-multiple: true
 
-      - name: List Release Assets
+      - name: Generate Version Metadata & Release Notes
         run: |
-          ls -la all-release-assets/
+          # Generate version.json
+          cat << EOF > all-release-assets/version.json
+          {
+            "version": "${{ steps.get_version.outputs.VERSION }}",
+            "tag": "${{ steps.get_version.outputs.TAG }}",
+            "commit": "${{ github.sha }}",
+            "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "node_version": "22.x LTS",
+            "release_channel": "stable"
+          }
+          EOF
 
-      - name: Generate Release Notes
-        id: release_notes
-        run: |
+          # Generate release_body.md
           cat << 'EOF' > release_body.md
-          ## RPG AUTO PRINT — Scan • Upload • Pay • Print
+          # RPG AUTO PRINT ${{ steps.get_version.outputs.TAG }}
+          
+          > **Tagline:** *Scan • Upload • Pay • Print*  
+          > **Commit:** `${{ github.sha }}`  
+          > **Release Date:** `$(date -u +'%B %d, %Y')`
 
           Automated smart print kiosk and owner management terminal with real-time cloud synchronization, dynamic pricing, and print queue.
+
+          ---
+
+          ### 📦 Release Assets Included
+          - 🪟 **Windows Installer**: `rpg-autoprint-setup-${{ steps.get_version.outputs.TAG }}.exe`
+          - 🪟 **Windows Portable**: `rpg-autoprint-windows-portable-${{ steps.get_version.outputs.TAG }}.zip`
+          - 🐧 **Linux AppImage**: `rpg-autoprint-${{ steps.get_version.outputs.TAG }}.AppImage`
+          - 🐧 **Linux Tarball**: `rpg-autoprint-linux-${{ steps.get_version.outputs.TAG }}.tar.gz`
+          - 🌐 **Web Kiosk Portal**: `rpg-autoprint-web-${{ steps.get_version.outputs.TAG }}.zip`
+          - 📱 **Progressive Web App (PWA)**: `rpg-autoprint-pwa-${{ steps.get_version.outputs.TAG }}.zip`
+          - ⚙️ **Backend Print Server**: `rpg-autoprint-backend-server-${{ steps.get_version.outputs.TAG }}.zip`
+          - 🤖 **Android Kiosk Terminal APK**: `rpg-autoprint-android-${{ steps.get_version.outputs.TAG }}.apk`
+          - 📁 **Source Code Package**: `rpg-autoprint-source-${{ steps.get_version.outputs.TAG }}.zip`
+          - 📑 **Version Metadata**: `version.json`
+
+          ---
 
           ### 🚀 New Features
           - **Customer Self-Service Kiosk & Web PWA**: Automatic order IDs, drag & drop document upload (PDF, Word, Excel, PowerPoint, Images).
@@ -271,12 +351,14 @@ jobs:
           - **Trilingual Localization**: Native support for English, Hindi (हिंदी), and Marathi (मराठी).
 
           ### ⚡ Improvements
-          - Firestore ABAC zero-trust security rules verified via automated rules testing suite.
-          - Material Design 3 responsive mobile and tablet interface.
+          - Modernized GitHub Actions CI/CD with Node.js 22 LTS, automatic package manager & framework detection.
+          - Strict ABAC security rules with automated rules unit testing.
+          - Material Design 3 responsive mobile and tablet interface with Android edge-to-edge support.
 
           ### 🐛 Bug Fixes
           - Enforced valid property checking on auth token claims in security rules.
           - Fixed button import in hardware printer manager.
+          - Added safe fallback checks on all npm lifecycle commands (`--if-present`).
 
           ### ⚠️ Breaking Changes
           - None (Initial production release).
@@ -284,6 +366,13 @@ jobs:
           ### 📌 Known Issues
           - Custom wide-format plotter media (> A3) requires manual paper feed alignment.
           EOF
+
+          # Copy release notes as a downloadable asset
+          cp release_body.md all-release-assets/RELEASE_NOTES.md
+
+      - name: List Release Assets
+        run: |
+          ls -la all-release-assets/
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2

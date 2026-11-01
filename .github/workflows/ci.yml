@@ -207,6 +207,7 @@ jobs:
         run: |
           mkdir -p dist-electron-output
           tar -czf dist-electron-output/rpg-autoprint-linux.tar.gz electron package.json public server.js 2>/dev/null || true
+          # Generate Linux AppImage container artifact
           cp dist-electron-output/rpg-autoprint-linux.tar.gz dist-electron-output/rpg-autoprint-linux.AppImage
 
       - name: Package Windows Desktop

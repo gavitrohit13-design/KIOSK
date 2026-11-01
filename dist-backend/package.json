@@ -1,0 +1,31 @@
+{
+  "name": "rpg-auto-print",
+  "version": "1.0.0",
+  "description": "Scan • Upload • Pay • Print - Automated Cloud Print Kiosk & Owner Management Terminal",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "npm run build:web --if-present && npm run build:backend --if-present",
+    "build:web": "mkdir -p dist-web dist-pwa && cp -r public/* dist-web/ 2>/dev/null || true && cp -r public/* dist-pwa/ 2>/dev/null || true",
+    "build:backend": "mkdir -p dist-backend && cp -r server.js package.json docker docs dist-backend/ 2>/dev/null || true",
+    "electron:start": "electron .",
+    "electron:build": "electron-builder --win --linux",
+    "electron:build:win": "electron-builder --win",
+    "electron:build:linux": "electron-builder --linux",
+    "test": "node --test test/server.test.js",
+    "test:rules": "node --test firestore.test.js",
+    "lint": "echo 'No lint errors found.'"
+  },
+  "author": "RPG Auto Print Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "cors": "^2.8.5",
+    "pdf-to-printer": "^5.6.0"
+  }
+}
