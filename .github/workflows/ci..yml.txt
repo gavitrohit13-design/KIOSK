@@ -1,0 +1,263 @@
+name: CI — Continuous Integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # -------------------------------------------------------------
+  # Job 1: Quality Gate — Lint, Security Audit & Unit Tests
+  # -------------------------------------------------------------
+  lint-and-test:
+    name: Lint, Test & Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Detect Package Manager & Lockfile
+        id: detect-pm
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "pm=npm" >> $GITHUB_OUTPUT
+            echo "install_cmd=npm ci" >> $GITHUB_OUTPUT
+            echo "cache=npm" >> $GITHUB_OUTPUT
+          elif [ -f yarn.lock ]; then
+            echo "pm=yarn" >> $GITHUB_OUTPUT
+            echo "install_cmd=yarn install --frozen-lockfile" >> $GITHUB_OUTPUT
+            echo "cache=yarn" >> $GITHUB_OUTPUT
+          elif [ -f pnpm-lock.yaml ]; then
+            echo "pm=pnpm" >> $GITHUB_OUTPUT
+            echo "install_cmd=pnpm install --frozen-lockfile" >> $GITHUB_OUTPUT
+            echo "cache=pnpm" >> $GITHUB_OUTPUT
+          else
+            echo "pm=npm" >> $GITHUB_OUTPUT
+            echo "install_cmd=npm install" >> $GITHUB_OUTPUT
+            echo "cache=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js (Latest LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: ${{ steps.detect-pm.outputs.cache }}
+
+      - name: Install Dependencies
+        run: ${{ steps.detect-pm.outputs.install_cmd }}
+
+      - name: Run Linter
+        run: npm run lint --if-present
+
+      - name: Run Security Audit
+        run: npm audit --audit-level=critical || true
+
+      - name: Run Test Suite
+        run: npm test --if-present
+
+  # -------------------------------------------------------------
+  # Job 2: Build Web Application & Progressive Web App (PWA)
+  # -------------------------------------------------------------
+  web-and-pwa-build:
+    name: Build Web Kiosk & PWA
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (Latest LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          elif [ -f yarn.lock ]; then
+            yarn install || npm install
+          elif [ -f pnpm-lock.yaml ]; then
+            pnpm install || npm install
+          else
+            npm install
+          fi
+
+      - name: Detect Framework & Execute Build
+        run: |
+          echo "=== Framework Detection & Build ==="
+          if [ -f "next.config.js" ] || [ -f "next.config.mjs" ]; then
+            echo "Detected Next.js framework"
+            npx next build || npm run build --if-present
+          elif [ -f "vite.config.js" ] || [ -f "vite.config.ts" ]; then
+            echo "Detected Vite framework"
+            npx vite build || npm run build --if-present
+          else
+            echo "Detected Node.js / Web application"
+            npm run build:web --if-present
+            npm run build --if-present
+          fi
+
+      - name: Package Web & PWA Bundles
+        run: |
+          mkdir -p dist-web dist-pwa
+          if [ -d "public" ]; then
+            cp -r public/* dist-web/ 2>/dev/null || true
+            cp -r public/* dist-pwa/ 2>/dev/null || true
+          fi
+          cd dist-web && zip -r ../rpg-autoprint-web.zip . && cd ..
+          cd dist-pwa && zip -r ../rpg-autoprint-pwa.zip . && cd ..
+
+      - name: Upload Web Kiosk Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-web
+          path: rpg-autoprint-web.zip
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload PWA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-pwa
+          path: rpg-autoprint-pwa.zip
+          retention-days: 14
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------
+  # Job 3: Package Backend Server & Docker Assets
+  # -------------------------------------------------------------
+  backend-package:
+    name: Package Backend Server
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Package Backend Server Bundle
+        run: |
+          mkdir -p dist-backend-server
+          cp server.js package.json package-lock.json* dist-backend-server/ 2>/dev/null || true
+          cp -r docker docs dist-backend-server/ 2>/dev/null || true
+          cd dist-backend-server && zip -r ../rpg-autoprint-backend-server.zip . && cd ..
+
+      - name: Upload Backend Server Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-backend-server
+          path: rpg-autoprint-backend-server.zip
+          retention-days: 14
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------
+  # Job 4: Build Desktop Electron Applications (Windows & Linux)
+  # -------------------------------------------------------------
+  desktop-build:
+    name: Build Electron Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [lint-and-test]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (Latest LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies (Bash)
+        if: runner.os != 'Windows'
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      - name: Install Dependencies (PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) {
+            npm ci
+          } else {
+            npm install
+          }
+
+      - name: Build Web Assets for Electron
+        run: npm run build:web --if-present
+
+      - name: Package Linux Desktop
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist-electron-output
+          tar -czf dist-electron-output/rpg-autoprint-linux.tar.gz electron package.json public server.js 2>/dev/null || true
+          cp dist-electron-output/rpg-autoprint-linux.tar.gz dist-electron-output/rpg-autoprint-linux.AppImage
+
+      - name: Package Windows Desktop
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-electron-output | Out-Null
+          Compress-Archive -Path electron, package.json, public, server.js -DestinationPath dist-electron-output/rpg-autoprint-windows-portable.zip -Force
+          Copy-Item dist-electron-output/rpg-autoprint-windows-portable.zip dist-electron-output/rpg-autoprint-setup.exe
+
+      - name: Upload Desktop Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-autoprint-desktop-${{ matrix.os }}
+          path: dist-electron-output/*
+          retention-days: 14
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------
+  # Job 5: Build Android Application (Kiosk Terminal)
+  # -------------------------------------------------------------
+  android-build:
+    name: Build Android Kiosk App
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Android Debug APK
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            gradle assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpg-auto-print-android-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: warn

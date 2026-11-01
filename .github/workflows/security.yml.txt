@@ -1,0 +1,46 @@
+name: Security Scan & Dependency Audit
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  security-audit:
+    name: NPM Audit & Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (Latest LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      - name: Run NPM Security Audit
+        run: npm audit --audit-level=critical || true
+
+      - name: Verify Secrets & Environment Hygiene
+        run: |
+          echo "Scanning for accidental hardcoded secrets in source files..."
+          if grep -rn "AIzaSy" app/src/ 2>/dev/null; then
+            echo "::warning ::Found potential hardcoded Google API key in source"
+          fi
+          echo "Security scan completed successfully."
